@@ -1,0 +1,14 @@
+# Kubernetes config
+.kube/
+
+# Devbox lock file (regenerated locally)
+devbox.lock
+
+# macOS
+.DS_Store
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo

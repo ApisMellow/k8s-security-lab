@@ -1,0 +1,20 @@
+{
+  "packages": [
+    "nixpkgs#kubectl",
+    "nixpkgs#k3d",
+    "nixpkgs#kubernetes-helm",
+    "nixpkgs#kustomize",
+    "nixpkgs#k9s",
+    "nixpkgs#kubectx",
+    "nixpkgs#stern",
+    "nixpkgs#yq-go",
+    "nixpkgs#jq"
+  ],
+  "shell": {
+    "init_hook": [
+      "echo 'Devbox shell ready. kubectl version:'",
+      "export KUBECONFIG=$PWD/.kube/config",
+      "kubectl version --client --short || true"
+    ]
+  }
+}

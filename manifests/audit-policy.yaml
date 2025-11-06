@@ -1,0 +1,13 @@
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: RequestResponse
+    verbs: ["create","update","patch","delete","deletecollection"]
+    omitStages:
+      - RequestReceived
+    resources:
+      - group: ""
+        resources: ["secrets","configmaps"]
+  - level: Metadata
+    omitStages:
+      - RequestReceived
