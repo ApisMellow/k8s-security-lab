@@ -1,0 +1,22 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-hostpath
+spec:
+  validationFailureAction: audit
+  background: true
+  rules:
+    - name: forbid-hostpath-volumes
+      match:
+        resources:
+          kinds: ["Pod"]
+      validate:
+        message: "Use of hostPath volumes is disallowed."
+        foreach:
+          - list: "request.object.spec.volumes[]"
+            deny:
+              conditions:
+                - key: "{{ element.hostPath }}"
+                  operator: AnyNotIn
+                  value:
+                    - null

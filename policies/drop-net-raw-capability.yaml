@@ -1,0 +1,37 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: drop-net-raw-capability
+spec:
+  validationFailureAction: audit
+  background: true
+  rules:
+    - name: add-drop-net-raw-containers
+      match:
+        resources:
+          kinds: ["Pod"]
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.annotations."kyverno.io/allow-net-raw" || '' }}"
+            operator: Equals
+            value: ""
+      mutate:
+        foreach:
+          - list: "request.object.spec.containers[]"
+            patchStrategicMerge:
+              spec:
+                containers:
+                  - name: "{{ element.name }}"
+                    securityContext:
+                      capabilities:
+                        drop:
+                          - NET_RAW
+          - list: "request.object.spec.initContainers[]"
+            patchStrategicMerge:
+              spec:
+                initContainers:
+                  - name: "{{ element.name }}"
+                    securityContext:
+                      capabilities:
+                        drop:
+                          - NET_RAW

@@ -12,3 +12,6 @@ devbox.lock
 .idea/
 *.swp
 *.swo
+
+# Backup files
+*.bak

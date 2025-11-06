@@ -1,0 +1,21 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-root-user
+spec:
+  validationFailureAction: audit
+  background: true
+  rules:
+    - name: require-nonroot
+      match:
+        resources:
+          kinds: ["Pod"]
+      validate:
+        message: "Containers must not run as root (runAsNonRoot: true)"
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
+            containers:
+            - =(securityContext):
+                =(runAsUser): ">0"
