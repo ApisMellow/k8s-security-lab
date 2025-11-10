@@ -10,11 +10,6 @@ spec:
       match:
         resources:
           kinds: ["Pod"]
-      preconditions:
-        all:
-          - key: "{{ request.object.metadata.annotations.\"kyverno.io/allow-net-raw\" || '' }}"
-            operator: Equals
-            value: ""
       mutate:
         foreach:
           - list: "request.object.spec.containers[]"
