@@ -62,13 +62,20 @@ if ! kubectl get ns kyverno >/dev/null 2>&1; then
 else
   echo "Kyverno namespace exists — skipping install"
 fi
-kubectl -n kyverno rollout status deploy/kyverno --timeout=180s || true
+
+# Wait for Kyverno deployments to be ready
+# Note: Kyverno 3.5+ uses multiple controllers (admission, background, cleanup, reports)
+echo "Waiting for Kyverno controllers to be ready..."
+kubectl -n kyverno rollout status deploy/kyverno-admission-controller --timeout=180s || {
+  err "Kyverno admission controller did not reach ready state. Check logs with: kubectl -n kyverno logs deploy/kyverno-admission-controller"
+  exit 1
+}
 kubectl -n kyverno get pods
 
-# 3) Create/update baseline policies (or update) in ./policies
+# 3) Create/update baseline policies (or update) in ./policies/phase-2-baseline
 header "Applying Kyverno baseline policies (validationFailureAction=${ACTION})"
 
-POL_DIR="./policies"
+POL_DIR="./policies/phase-2-baseline"
 mkdir -p "${POL_DIR}"
 
 # ---- Validation: Disallow Privileged

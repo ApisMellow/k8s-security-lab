@@ -112,7 +112,7 @@ Audit logging provides accountability and visibility:
 ### How to enable
 Recreate your cluster with audit logging:
 ```bash
-./scripts/cluster-up-with-audit.sh
+./scripts/cluster-up-phase1-with-audit.sh
 ```
 
 Then after running tests, check the audit log:

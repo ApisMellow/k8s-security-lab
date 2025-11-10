@@ -73,12 +73,9 @@ else
   info "Keeping Kyverno deployment (per --keep-kyverno)"
 fi
 
-header "Clean local policy files (./policies)"
-rm -f ./policies/disallow-privileged.yaml \
-      ./policies/disallow-root-user.yaml \
-      ./policies/restrict-image-registry.yaml \
-      ./policies/require-labels.yaml 2>/dev/null || true
-rmdir ./policies 2>/dev/null || true
+header "Clean local policy files (./policies/phase-2-baseline)"
+rm -f ./policies/phase-2-baseline/*.yaml 2>/dev/null || true
+rmdir ./policies/phase-2-baseline 2>/dev/null || true
 ok "Local policy files cleaned"
 
 echo ""

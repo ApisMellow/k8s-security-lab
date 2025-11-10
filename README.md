@@ -5,31 +5,71 @@ then walks you through **Phase 1** labs: RBAC, namespaces, and basic hardening.
 
 ## Prereqs
 - macOS with **Nix** and **Devbox** installed
-- **Docker Desktop** (or Colima) running (k3d uses a containerized k3s)
+- **Docker Desktop** running (k3d uses a containerized k3s)
 - `git` for convenience
 
-> If you want to avoid Docker entirely, see **Alternative: Minikube without Docker** at the end.
+## Getting Started
 
-## Quickstart
+### Option 1: Automated Path (Makefile) — Recommended
+
+The fastest way to run all phases:
 
 ```bash
 git clone <this-folder> k8s-sec-devbox
 cd k8s-sec-devbox
 
-# enter reproducible toolchain via devbox (kubectl, k3d, helm, k9s, etc.)
+# enter reproducible toolchain
 devbox shell
 
-# create cluster
-./scripts/cluster-up.sh              # default name: dev
-
-# verify
-kubectl cluster-info
-kubectl get nodes -o wide
+# run all phases in sequence
+make phase1 phase2 phase3 phase4
 ```
 
-### Phase 1 Labs
+This runs the full security lab from Phase 1 (RBAC, namespaces, audit) through Phase 4 (encryption at rest, secret hygiene).
 
-1) **Namespaces + RBAC** (least privilege)
+Check help for individual phases:
+```bash
+make help
+```
+
+### Option 2: Manual Path (Scripts) — For Learning
+
+If you want to understand each step, run scripts manually:
+
+```bash
+git clone <this-folder> k8s-sec-devbox
+cd k8s-sec-devbox
+
+devbox shell
+
+# Phase 1a: Create basic cluster
+./scripts/cluster-up-phase1-basic.sh
+
+# Phase 1b: Upgrade to audit logging
+./scripts/cluster-down.sh
+./scripts/cluster-up-phase1-with-audit.sh
+
+# Phase 1: Apply RBAC and test
+kubectl apply -f manifests/namespaces.yaml
+kubectl apply -f manifests/rbac-dev-view.yaml
+bash scripts/harden-phase1.sh
+
+# Phase 2: Add pod security & Kyverno policies
+bash scripts/harden-phase2.sh
+
+# Phase 3: Add network policies
+bash scripts/harden-phase3.sh
+
+# Phase 4: Enable encryption at rest + secret hygiene
+./scripts/cluster-up-phase4.sh
+bash scripts/harden-phase4.sh
+```
+
+---
+
+## Phase 1 Lab Details
+
+### 1) **Namespaces + RBAC** (least privilege)
 
 ```bash
 # create namespaces
@@ -43,7 +83,7 @@ kubectl -n dev auth can-i list pods --as=system:serviceaccount:dev:sa-dev-view
 kubectl -n dev auth can-i delete pods --as=system:serviceaccount:dev:sa-dev-view  # should be no
 ```
 
-2) **API Audit Logging with k3d/k3s**
+### 2) **API Audit Logging with k3d/k3s**
 
 ```bash
 # destroy any existing cluster
@@ -51,7 +91,7 @@ kubectl -n dev auth can-i delete pods --as=system:serviceaccount:dev:sa-dev-view
 
 # recreate with audit logging enabled and audit policy mounted, set apiserver arg
 # flags for k3s via k3d so audit lines are easier to see
-./scripts/cluster-up-with-audit.sh
+./scripts/cluster-up-phase1-with-audit.sh
 
 # generate some denied events, then check logs:
 kubectl -n dev auth can-i delete secrets --as=system:serviceaccount:dev:sa-dev-view
@@ -60,26 +100,6 @@ docker logs $(docker ps --filter name=k3d-dev-server-0 -q) 2>&1 | grep audit
 ```
 > Audit files in k3s live under `/var/lib/rancher/k3s/server/logs/audit.log` inside the server node.
 > We pass args via `--k3s-arg` to configure the apiserver.
-
-### Teardown
-
-```bash
-./scripts/cluster-down.sh
-```
-
----
-
-## Alternative: Minikube without Docker
-
-If you don't want Docker Desktop, you can run **minikube** with a VM driver (qemu/hyperkit). Inside `devbox shell`:
-
-```bash
-devbox add minikube
-minikube start --driver=qemu
-kubectl get nodes
-```
-
-> Note: paths and flags for audit logging differ from k3s. Start with the k3d path for speed; switch later if needed.
 
 ## Notes
 

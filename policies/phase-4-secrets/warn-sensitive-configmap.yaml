@@ -1,0 +1,31 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: warn-sensitive-configmap
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: audit-sensitive-keys
+      match:
+        any:
+        - resources:
+            kinds: ["ConfigMap"]
+      preconditions:
+        all:
+          - key: "{{ request.operation }}"
+            operator: AnyIn
+            value: ["CREATE","UPDATE"]
+      validate:
+        message: "ConfigMap contains keys that look sensitive (password/token/key/secret). Prefer Kubernetes Secrets."
+        deny:
+          conditions:
+            any:
+            - key: "{{ keys(request.object.data || `{}`) }}"
+              operator: AnyIn
+              value:
+                - "?*password?*"
+                - "?*token?*"
+                - "?*secret?*"
+                - "?*api_key?*"
+                - "?*access_key?*"

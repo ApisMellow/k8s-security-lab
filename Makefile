@@ -1,11 +1,11 @@
-# Unified Makefile for Kubernetes Security Lab (Phase 2 + Phase 3)
+# Unified Makefile for Kubernetes Security Lab (After Phase 1 completed)
 SHELL := /usr/bin/env bash
 
 # ---------------------------- Config -----------------------------------------
 KUBECTL        ?= kubectl
 NS             ?= dev prod
-POLICY_DIR     ?= policy               # Phase 2 Kyverno policies (your yaml folder)
-NP_DIR         ?= network-policies     # Phase 3 NetworkPolicies
+POLICY_DIR     ?= policies/phase-2-baseline  # Phase 2 Kyverno baseline policies
+NP_DIR         ?= network-policies           # Phase 3 NetworkPolicies
 KYVERNO_NS     ?= kyverno
 
 # Colors
@@ -16,17 +16,25 @@ RED    := \033[31m
 NC     := \033[0m
 
 define say
-	@printf "$(CYAN)[make]$(NC) %s\n" "$(1)"
+	@printf "$(CYAN)[make]$(NC) %s\n" $(1)
 endef
 
 .PHONY: help \
+        phase1 phase1-up phase1-harden phase1-reset phase1-status \
         phase2 phase2-harden phase2-apply phase2-reset phase2-status phase2-diff phase2-lint \
         phase3 phase3-harden phase3-apply phase3-reset phase3-status phase3-test phase3-diff phase3-lint \
-        status nuke-namespaces reclaim-disk spin-down resume-notes _check-kubectl
+        phase4 phase4-up phase4-harden phase4-scan phase4-reset phase4-status phase4-down \
+        status nuke-namespaces reclaim-disk cluster-down cluster-status _check-kubectl
 
 # ---------------------------- Help -------------------------------------------
 help:
 	@echo "Targets:"
+	@echo "  phase1            - Alias for phase1-harden (shortcut: create cluster + apply RBAC/namespaces + test)"
+	@echo "  phase1-up         - Create k3d cluster with audit logging enabled"
+	@echo "  phase1-harden     - Apply namespaces, RBAC, and run verification tests"
+	@echo "  phase1-reset      - Run scripts/reset-phase1.sh (remove RBAC/namespaces, keep cluster)"
+	@echo "  phase1-status     - Show cluster context and node status"
+	@echo ""
 	@echo "  phase2            - Alias for phase2-harden"
 	@echo "  phase2-harden     - Run scripts/harden-phase2.sh (PSA + Kyverno baseline)"
 	@echo "  phase2-apply      - kubectl apply Phase 2 policy yamls in '$(POLICY_DIR)/'"
@@ -44,11 +52,42 @@ help:
 	@echo "  phase3-diff       - kubectl diff for baseline NetworkPolicies"
 	@echo "  phase3-lint       - yamllint for Phase 3 yamls (optional)"
 	@echo ""
+	@echo "  phase4            - Create NEW cluster + apply policies (⚠️ REQUIRES: make cluster-down first)"
+	@echo "  phase4-up         - Create k3d cluster with secrets encryption + audit logging"
+	@echo "  phase4-harden     - Apply Kyverno secret-hygiene policies (Phase 4)"
+	@echo "  phase4-scan       - Run Trivy scans to verify security posture (manifests + cluster)"
+	@echo "  phase4-reset      - Remove Phase 4 policies from cluster (repo untouched)"
+	@echo "  phase4-status     - Show Phase 4 policy state (Kyverno secret policies)"
+	@echo "  phase4-down       - Delete k3d cluster"
+	@echo ""
 	@echo "  status            - Cluster high-level status (contexts, nodes, ns, pods)"
 	@echo "  nuke-namespaces   - Delete common demo namespaces (config NS=...)"
 	@echo "  reclaim-disk      - Docker prune images/volumes/builders (DANGEROUS)"
-	@echo "  spin-down         - Guidance: stop/delete local cluster (kind/minikube/k3d)"
-	@echo "  resume-notes      - Guidance: how to resume work later"
+	@echo "  cluster-down      - Stop/delete k3d cluster"
+	@echo "  cluster-status    - Show k3d cluster status"
+
+# ---------------------------- Phase 1 ----------------------------------------
+phase1: phase1-up phase1-harden
+
+phase1-up: _check-kubectl
+	$(call say,"Creating k3d cluster with audit logging enabled")
+	@bash scripts/cluster-up-phase1-with-audit.sh
+
+phase1-harden: _check-kubectl
+	$(call say,"Applying Phase 1 RBAC and namespaces")
+	@kubectl apply -f manifests/namespaces.yaml
+	@kubectl apply -f manifests/rbac-dev-view.yaml
+	@bash scripts/harden-phase1.sh
+
+phase1-reset: _check-kubectl
+	$(call say,"Removing Phase 1 resources via scripts/reset-phase1.sh")
+	@bash scripts/reset-phase1.sh
+
+phase1-status: _check-kubectl
+	$(call say,"Phase 1 status")
+	@kubectl config current-context
+	@kubectl get nodes -o wide
+	@kubectl get ns dev prod
 
 # ---------------------------- Phase 2 ----------------------------------------
 phase2: phase2-harden
@@ -156,6 +195,59 @@ phase3-lint:
 	@command -v yamllint >/dev/null || { printf "$(YELLOW)yamllint not installed; skipping.$(NC)\n"; exit 0; }
 	@yamllint -s $(NP_DIR)
 
+# ---- Phase 4: Secrets Hygiene & Encryption  -----------------------
+K3D_NAME    ?= phase4
+
+phase4: phase4-up phase2-harden phase4-harden
+
+phase4-up: _check-kubectl
+	$(call say,"Bringing up k3d cluster '$(K3D_NAME)' with secrets encryption + audit")
+	@bash scripts/cluster-up-phase4.sh "$(K3D_NAME)"
+
+phase4-harden: _check-kubectl
+	$(call say,"Applying Phase 4 Kyverno policies (secret hygiene)")
+	@bash scripts/harden-phase4.sh
+	@echo ""
+	@echo "✅ Phase 4 Hardening Complete!"
+	@echo ""
+	@echo "Next: Run 'make phase4-scan' to verify security posture with Trivy"
+	@echo ""
+
+phase4-scan:
+	$(call say,"Running Trivy scans (manifests + cluster) to verify security posture")
+	@echo "Scanning policies directory..."
+	@bash scanners/trivy-scan-manifests.sh policies/
+	@sleep 2
+	@echo "Scanning network-policies directory..."
+	@bash scanners/trivy-scan-manifests.sh network-policies/
+	@sleep 2
+	@echo "Scanning cluster..."
+	@bash scanners/trivy-scan-cluster.sh
+	@echo ""
+	@echo "✅ Phase 4 Complete - All Security Layers Verified!"
+	@echo ""
+	@echo "🎓 You have successfully completed the BUILD & SECURE phases:"
+	@echo "   Phase 1: RBAC, namespaces, and API audit logging"
+	@echo "   Phase 2: Pod security policies (Kyverno baseline)"
+	@echo "   Phase 3: Network policies (default deny + allows)"
+	@echo "   Phase 4: Secrets encryption at rest + hygiene policies"
+	@echo ""
+	@echo "📋 Next Phase: Phase 5 - Assessment & Attack Simulation"
+	@echo "   See the lab workbook for details on vulnerability assessment,"
+	@echo "   attack simulations, and security testing strategies."
+	@echo ""
+
+phase4-reset: _check-kubectl
+	$(call say,"Removing Phase 4 Kyverno policies from cluster only")
+	@bash scripts/reset-phase4.sh
+
+phase4-status: _check-kubectl
+	$(call say,"Phase 4 policy state")
+	@kubectl get cpol,pol -A | grep -i secret || true
+
+phase4-down:
+	$(call say,"Deleting k3d cluster '$(K3D_NAME)'")
+	@k3d cluster delete "$(K3D_NAME)" || true
 # ---------------------------- Utilities --------------------------------------
 status: _check-kubectl
 	$(call say,"Cluster status overview")
@@ -179,31 +271,14 @@ reclaim-disk:
 		printf "$(YELLOW)Skipped.$(NC)\n"; \
 	fi
 
-# Print guidance to spin down (can also just run: make spin-down)
-spin-down:
-	@echo "== Guidance to spin down local Kubernetes =="
-	@echo "1) Phase cleanup: make phase3-reset && make phase2-reset"
-	@echo "2) Remove demo namespaces: make nuke-namespaces"
-	@echo "3) Stop or delete your cluster:"
-	@echo "   - kind:     kind delete cluster [--name <name>]"
-	@echo "   - minikube: minikube stop && minikube delete --all"
-	@echo "   - k3d:      k3d cluster delete <name>"
-	@echo "   - Docker Desktop: disable Kubernetes in Settings > Kubernetes"
-	@echo "4) Optional disk cleanup: make reclaim-disk"
-	@echo "5) To resume later: start cluster (kind/minikube/k3d) and run 'make phase2 && make phase3'"
+cluster-down:
+	$(call say,"Deleting k3d cluster")
+	@k3d cluster delete || true
 
-resume-notes:
-	@echo "== How to resume later =="
-	@echo "1) Start your cluster (pick one):"
-	@echo "   - kind:     kind create cluster [--name <name>]"
-	@echo "   - minikube: minikube start"
-	@echo "   - k3d:      k3d cluster create <name>"
-	@echo "   - Docker Desktop: enable Kubernetes in Settings > Kubernetes"
-	@echo "2) Apply security baselines:"
-	@echo "   make phase2 && make phase3"
-	@echo "3) Verify:"
-	@echo "   make phase2-status && make phase3-status"
-	@echo "4) Per-app policies: add/adjust NetworkPolicies under $(NP_DIR)/ as needed."
+cluster-status:
+	$(call say,"k3d cluster status")
+	@k3d cluster list
+	@kubectl cluster-info || true
 
 # ---------------------------- Guards -----------------------------------------
 _check-kubectl:

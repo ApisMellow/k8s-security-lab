@@ -1,0 +1,30 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-labels
+spec:
+  validationFailureAction: audit
+  background: true
+  rules:
+    - name: require-app-label
+      match:
+        resources:
+          kinds: ["Pod","Deployment","StatefulSet","DaemonSet","Job","CronJob"]
+      # NOTE: Trivy cluster scanning creates temporary jobs in the 'trivy-temp' namespace
+      # without standard application labels. We exempt system namespaces to allow scanning,
+      # while user application workloads remain required to have the 'app' label.
+      preconditions:
+        all:
+        - key: "{{ request.namespace }}"
+          operator: NotIn
+          value:
+          - trivy-temp
+          - kube-system
+          - kube-node-lease
+          - kube-public
+      validate:
+        message: "Resource must include label 'app'"
+        pattern:
+          metadata:
+            labels:
+              app: "?*"

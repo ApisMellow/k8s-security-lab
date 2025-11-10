@@ -20,11 +20,10 @@ header() {
 }
 
 header "Context & Health"
-ctx="$(kubectl config current-context 2>/dev/null || true)"
-if [[ -z "${ctx}" ]]; then
+ctx="$(kubectl config current-context 2>/dev/null)" || {
   err "kubectl has no current-context. Set KUBECONFIG and try again."
   exit 1
-fi
+}
 echo "Current context: ${ctx}"
 kubectl get nodes -o wide || { err "Cannot reach cluster"; exit 1; }
 ok "kubectl is talking to the cluster"
@@ -172,4 +171,4 @@ done
 echo ""
 echo "Tips:"
 echo " - To bind API to localhost, recreate with: k3d cluster create dev --image rancher/k3s:v1.30.4-k3s1 --api-port 127.0.0.1:6445 --agents 2"
-echo " - Ensure audit policy is mounted and flags set in cluster-up-with-audit.sh"
+echo " - Ensure audit policy is mounted and flags set in cluster-up-phase1-with-audit.sh"

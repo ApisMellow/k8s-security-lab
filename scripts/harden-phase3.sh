@@ -40,19 +40,25 @@ MSG
   # Continue anyway so you can install policies after enabling CNI.
 fi
 
-echo "==> Applying default-deny + allow rules (dev & prod)"
+echo "==> Applying NetworkPolicies (dev & prod)"
 for ns in "${NS_LIST[@]}"; do
   echo "Applying to namespace: $ns"
-  for f in 00-default-deny-ingress.yaml 01-default-deny-egress.yaml 10-allow-dns-egress.yaml 20-allow-same-namespace.yaml; do
+  for f in 00-default-deny-ingress.yaml 01-default-deny-egress.yaml 10-allow-dns-egress.yaml 20-allow-same-namespace.yaml 30-allow-app-to-app.yaml 40-allow-egress-external.yaml; do
     # Replace namespace in the policy
     sed "s/namespace: dev/namespace: $ns/g" "network-policies/$f" | kubectl apply -f -
   done
-  # app-to-app and external egress are optional / per-app
 done
 
 echo "==> Phase 3 baseline applied."
 echo "   - default deny ingress/egress"
 echo "   - DNS egress allowed"
 echo "   - intra-namespace ingress allowed"
-echo "Use 30-allow-app-to-app.yaml and 40-allow-egress-external.yaml per workload."
+echo "   - app-to-app communication allowed"
+echo "   - external HTTPS egress allowed"
+echo ""
+echo "⚠️  IMPORTANT: Phase 4 requires a NEW cluster with encryption at rest."
+echo "Before running 'make phase4', you MUST stop this cluster:"
+echo "   make cluster-down"
+echo ""
+echo "Phase 4 will create a fresh cluster (also on port 127.0.0.1:6445)"
 
