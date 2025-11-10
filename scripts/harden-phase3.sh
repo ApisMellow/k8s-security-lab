@@ -13,7 +13,7 @@ echo "==> Smoke-test: does CNI enforce NetworkPolicies?"
 kubectl -n dev apply -f - <<'YAML'
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
-metadata: { name: _probe-deny-egress }
+metadata: { name: probe-deny-egress }
 spec:
   podSelector: {}
   policyTypes: ["Egress"]
@@ -29,7 +29,7 @@ kubectl -n dev exec np-probe -- sh -lc 'wget -qO- https://example.com || echo FA
 EGRESS_STATUS=$?
 set -e
 
-kubectl -n dev delete netpol _probe-deny-egress --ignore-not-found
+kubectl -n dev delete netpol probe-deny-egress --ignore-not-found
 kubectl -n dev delete pod np-probe --ignore-not-found
 
 if [[ $EGRESS_STATUS -eq 0 ]]; then
@@ -42,8 +42,10 @@ fi
 
 echo "==> Applying default-deny + allow rules (dev & prod)"
 for ns in "${NS_LIST[@]}"; do
+  echo "Applying to namespace: $ns"
   for f in 00-default-deny-ingress.yaml 01-default-deny-egress.yaml 10-allow-dns-egress.yaml 20-allow-same-namespace.yaml; do
-    kubectl -n "$ns" apply -f "network-policies/$f"
+    # Replace namespace in the policy
+    sed "s/namespace: dev/namespace: $ns/g" "network-policies/$f" | kubectl apply -f -
   done
   # app-to-app and external egress are optional / per-app
 done

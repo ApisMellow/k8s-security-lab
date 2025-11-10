@@ -12,9 +12,7 @@
   ],
   "shell": {
     "init_hook": [
-      "echo 'Devbox shell ready. kubectl version:'",
-      "export KUBECONFIG=$PWD/.kube/config",
-      "kubectl version --client --short || true"
+      "export KUBECONFIG=$PWD/.kube/config"
     ]
   }
 }
