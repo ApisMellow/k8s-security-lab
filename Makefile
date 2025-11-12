@@ -24,6 +24,7 @@ endef
         phase2 phase2-harden phase2-apply phase2-reset phase2-status phase2-diff phase2-lint \
         phase3 phase3-harden phase3-apply phase3-reset phase3-status phase3-test phase3-diff phase3-lint \
         phase4 phase4-up phase4-harden phase4-scan phase4-reset phase4-status phase4-down \
+        phase5 phase5-assess phase5-trivy-operator-install phase5-trivy-operator-query phase5-simulate phase5-validate phase5-reset \
         status nuke-namespaces reclaim-disk cluster-down cluster-status _check-kubectl
 
 # ---------------------------- Help -------------------------------------------
@@ -59,6 +60,14 @@ help:
 	@echo "  phase4-reset      - Remove Phase 4 policies from cluster (repo untouched)"
 	@echo "  phase4-status     - Show Phase 4 policy state (Kyverno secret policies)"
 	@echo "  phase4-down       - Delete k3d cluster"
+	@echo ""
+	@echo "  phase5            - Full assessment + attack simulations (requires Phase 4)"
+	@echo "  phase5-assess     - Run kube-bench + kubescape security assessment"
+	@echo "  phase5-trivy-operator-install - Deploy continuous vulnerability scanning"
+	@echo "  phase5-trivy-operator-query   - Display trivy-operator findings"
+	@echo "  phase5-simulate   - Run attack simulation tests (validates Phase 1-4 controls)"
+	@echo "  phase5-validate   - Hands-on validation: deploy insecure workloads, watch detection"
+	@echo "  phase5-reset      - Clean up Phase 5 resources (trivy-system namespace, reports)"
 	@echo ""
 	@echo "  status            - Cluster high-level status (contexts, nodes, ns, pods)"
 	@echo "  nuke-namespaces   - Delete common demo namespaces (config NS=...)"
@@ -248,6 +257,52 @@ phase4-status: _check-kubectl
 phase4-down:
 	$(call say,"Deleting k3d cluster '$(K3D_NAME)'")
 	@k3d cluster delete "$(K3D_NAME)" || true
+
+# ---- Phase 5: Assessment & Attack Simulation  ---------------------------------
+
+phase5: phase5-assess phase5-simulate
+
+phase5-assess: _check-kubectl
+	$(call say,"Running point-in-time security assessment (kube-bench + kubescape)")
+	@bash scripts/phase5-assess.sh
+
+phase5-trivy-operator-install: _check-kubectl
+	$(call say,"Installing trivy-operator for continuous vulnerability scanning")
+	@bash scripts/phase5-trivy-operator-install.sh
+
+phase5-trivy-operator-query: _check-kubectl
+	$(call say,"Querying trivy-operator findings")
+	@bash scripts/phase5-trivy-operator-query.sh
+
+phase5-simulate: _check-kubectl
+	$(call say,"Running attack simulation tests (validates Phase 1-4 controls)")
+	@bash scripts/phase5-simulate-attacks.sh
+
+phase5-validate: _check-kubectl
+	$(call say,"Hands-on trivy-operator validation guide")
+	@echo ""
+	@echo "📖 See: docs/phase5-trivy-operator-validation.md"
+	@echo ""
+	@echo "Run the validation scenarios to:"
+	@echo "  1. Deploy insecure workloads"
+	@echo "  2. Watch trivy-operator detect issues"
+	@echo "  3. Remediate and verify fixes"
+	@echo ""
+	@echo "Quick test:"
+	@echo "  kubectl run test-latest --image=nginx:latest"
+	@echo "  # Wait 30-60 seconds for scan"
+	@echo "  kubectl get vulnerabilityreports -n default"
+	@echo ""
+
+phase5-reset: _check-kubectl
+	$(call say,"Cleaning up Phase 5 resources")
+	@kubectl delete namespace phase5-tests --ignore-not-found=true || true
+	@kubectl delete namespace trivy-system --ignore-not-found=true || true
+	@rm -rf reports/phase5-*
+	@echo ""
+	@echo "✅ Phase 5 resources cleaned up"
+	@echo ""
+
 # ---------------------------- Utilities --------------------------------------
 status: _check-kubectl
 	$(call say,"Cluster status overview")

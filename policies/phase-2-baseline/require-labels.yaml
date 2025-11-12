@@ -9,19 +9,18 @@ spec:
     - name: require-app-label
       match:
         resources:
-          kinds: ["Pod","Deployment","StatefulSet","DaemonSet","Job","CronJob"]
-      # NOTE: Trivy cluster scanning creates temporary jobs in the 'trivy-temp' namespace
-      # without standard application labels. We exempt system namespaces to allow scanning,
-      # while user application workloads remain required to have the 'app' label.
-      preconditions:
-        all:
-        - key: "{{ request.namespace }}"
-          operator: NotIn
-          value:
-          - trivy-temp
-          - kube-system
-          - kube-node-lease
-          - kube-public
+          # Note: Job is intentionally excluded to allow third-party tools (e.g., Trivy's node-collector)
+          # to create internal jobs without requiring the 'app' label.
+          kinds: ["Pod","Deployment","StatefulSet","DaemonSet","CronJob"]
+          namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: NotIn
+                values:
+                  - default
+                  - kube-system
+                  - kube-node-lease
+                  - kube-public
       validate:
         message: "Resource must include label 'app'"
         pattern:

@@ -15,3 +15,9 @@ devbox.lock
 
 # Backup files
 *.bak
+
+# Local development/improvement ideas (not for commit)
+docs/IMPROVEMENT_IDEAS.md
+
+# Test and assessment reports (regenerated locally)
+reports/

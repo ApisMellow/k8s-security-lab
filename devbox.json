@@ -9,7 +9,8 @@
     "nixpkgs#stern",
     "nixpkgs#yq-go",
     "nixpkgs#jq",
-    "nixpkgs#trivy"
+    "nixpkgs#trivy",
+    "nixpkgs#kubescape"
   ],
   "shell": {
     "init_hook": [
