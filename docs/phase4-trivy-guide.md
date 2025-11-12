@@ -31,3 +31,8 @@ bash scanners/trivy-scan-manifests.sh network-policies/
 ```bash
 make phase4-scan
 ```
+
+**Save scan report to disk:**
+```bash
+make phase4-scan > phase4-scan-$(date +%Y%m%d-%H%M%S).txt 2>&1
+```
