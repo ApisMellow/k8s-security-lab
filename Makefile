@@ -327,8 +327,8 @@ reclaim-disk:
 	fi
 
 cluster-down:
-	$(call say,"Deleting k3d cluster")
-	@k3d cluster delete || true
+	$(call say,"Deleting k3d cluster '$(K3D_NAME)'")
+	@k3d cluster delete "$(K3D_NAME)" || true
 
 cluster-status:
 	$(call say,"k3d cluster status")
