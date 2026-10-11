@@ -4,8 +4,11 @@ SHELL := /usr/bin/env bash
 # ---------------------------- Config -----------------------------------------
 KUBECTL        ?= kubectl
 NS             ?= dev prod
-POLICY_DIR     ?= policies/phase-2-baseline  # Phase 2 Kyverno baseline policies
-NP_DIR         ?= network-policies           # Phase 3 NetworkPolicies
+# Phase 2 Kyverno baseline policies
+POLICY_DIR     ?= policies/phase-2-baseline
+# Phase 3 NetworkPolicies
+# (comments live on their own lines: a trailing "# ..." would leave spaces in the value)
+NP_DIR         ?= network-policies
 KYVERNO_NS     ?= kyverno
 
 # Colors
@@ -72,7 +75,7 @@ help:
 	@echo "  status            - Cluster high-level status (contexts, nodes, ns, pods)"
 	@echo "  nuke-namespaces   - Delete common demo namespaces (config NS=...)"
 	@echo "  reclaim-disk      - Docker prune images/volumes/builders (DANGEROUS)"
-	@echo "  cluster-down      - Stop/delete k3d cluster"
+	@echo "  cluster-down      - Delete lab k3d clusters (dev and $(K3D_NAME))"
 	@echo "  cluster-status    - Show k3d cluster status"
 
 # ---------------------------- Phase 1 ----------------------------------------
@@ -194,7 +197,7 @@ phase3-test: _check-kubectl
 	$(KUBECTL) -n $$ns run frontend --image=busybox --labels app=frontend --restart=Never -- sh -lc 'sleep 300' || true; \
 	$(KUBECTL) -n $$ns wait --for=condition=Ready pod/frontend --timeout=90s || true; \
 	printf "$(CYAN)-- Expect FAIL before app-to-app allow --$(NC)\n"; \
-	$(KUBECTL) -n $$ns exec frontend -- sh -lc 'wget -S -O- http://backend:8080 2>&1 | head -n2' || true; \
+	$(KUBECTL) -n $$ns exec frontend -- sh -lc 'wget -S -O- http://backend:80 2>&1 | head -n2' || true; \
 	printf "$(CYAN)-- Apply 30-allow-app-to-app.yaml to allow --$(NC)\n"; \
 	$(KUBECTL) -n $$ns delete pod frontend backend --ignore-not-found=true >/dev/null 2>&1 || true; \
 	printf "$(GREEN)phase3-test completed.$(NC)\n"
@@ -326,9 +329,13 @@ reclaim-disk:
 		printf "$(YELLOW)Skipped.$(NC)\n"; \
 	fi
 
+# Phases 1-3 use cluster 'dev'; Phase 4+ uses '$(K3D_NAME)'. Both bind 127.0.0.1:6445,
+# so delete both to free the port before 'make phase4'.
+LAB_CLUSTERS ?= dev $(K3D_NAME)
+
 cluster-down:
-	$(call say,"Deleting k3d cluster '$(K3D_NAME)'")
-	@k3d cluster delete "$(K3D_NAME)" || true
+	$(call say,"Deleting k3d clusters: $(LAB_CLUSTERS)")
+	@for c in $(LAB_CLUSTERS); do k3d cluster delete "$$c" || true; done
 
 cluster-status:
 	$(call say,"k3d cluster status")
