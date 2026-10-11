@@ -18,7 +18,8 @@ Only four small, mechanical fixes are implemented on this branch (see §1.4). Ev
 - **It is a hardening lab with assertions, not yet an attack lab.** There is no detection, no runtime monitoring, no supply-chain content, no node or identity attack surface, and no AI-workload content. The workbook PDF promises Falco, external secrets and Calico/Cilium, and none of them are built.
 - **Several pieces are now out of date.** k3s v1.30 is past upstream EOL (2025-06-28). Kyverno `ClusterPolicy` is deprecated (CEL policy types went v1 in Kyverno 1.17). ingress-nginx was retired 2026-03-24. kube-hunter is deprecated. The Trivy releases v0.69.4–0.69.6 and `trivy-action` tags were compromised in March 2026 (CVE-2026-33634), and the lab installs Trivy without version pinning.
 - **Jupyter fits well as the evidence and analysis layer.** Notebooks suit audit-log forensics, verifying detections and charting before/after posture, and they can be run headless in CI as the lab's self-test. Cluster setup and teardown should stay in Make and scripts.
-- **Proposed shape:** nine modules, each following the same loop: **Observe → Detect → Harden → Verify**. Each module is mapped to the OWASP Kubernetes Top 10 (2025), MITRE ATT&CK (Containers) and the CIS Benchmark.
+- **Proposed shape:** ten modules, each following the same loop: **Observe → Detect → Harden → Verify**. Each module is mapped to the OWASP Kubernetes Top 10 (2025), MITRE ATT&CK (Containers) and the CIS Benchmark.
+- **A purple-team capstone (M10):** an authorized agent that acts as an adversarial pen tester against the throwaway lab cluster, scoped by construction, and scored on how much of what it does the lab's own controls and detections catch. See §4.1.
 
 ---
 
@@ -157,6 +158,35 @@ Exercises use deliberately misconfigured workloads in the local k3d cluster only
 | M7 | **Nodes, runtime & cluster components** *(new)* | Phase 5 kube-bench | Correct k3s CIS run. kubelet hardening (anonymous auth, authz mode, fine-grained kubelet authz). Runtime/kernel version inventory against advisories (runc, containerd, kernel). Ingress: Gateway API migration, with ingress-nginx retirement and IngressNightmare as a case study on exposed admission webhooks. | K06, K07 |
 | M8 | **AI workloads & agents on Kubernetes** *(new)* | — | CPU-only on k3d. Exposed model-serving / Ray control-plane case study and hardening (auth, NetworkPolicy, no public Services). Model artifact safety (safetensors vs pickle, scanning with picklescan/ModelScan). An in-cluster agent / MCP server with a least-privilege SA, egress allow-lists and an approval boundary, mapped to the OWASP Agentic Top 10. Agent Sandbox / gVisor as an isolation option. GPU-toolkit CVEs as architecture discussion only. | K01, K02, K06 |
 | M9 | **Assessment & capstone** | Phase 5 | Rebuilt Phase 5: kubescape + trivy-operator + kube-bench results loaded into notebooks, with a before/after scorecard per module. Capstone: a pre-built "insecure-shop" namespace containing ~10 planted weaknesses, which learners find, detect and fix, graded by a notebook. | All |
+| M10 | **Agent-driven adversarial testing (purple team)** *(new)* | M1–M9, esp. M6 | An authorized AI agent that probes the local lab cluster against a defined scope, maps findings to ATT&CK, and — the point of the module — scores how many of its actions the M6 detections and admission controls caught. See §4.1. | K10, plus whichever the run touches |
+
+### 4.1 M10 in detail: the adversarial-testing agent
+
+The ask is to be able to point an agent at the lab and have it act as an adversarial pen tester. The way to make that a *lab exercise* rather than just a scan is to run it as **purple team**: the agent attacks, the lab records, and the deliverable is a scorecard of **what was blocked and what was detected**, not just what the agent managed to do. That turns every run into a direct test of M1–M9.
+
+**Operating rules (built into the harness, not left to the prompt):**
+
+- **Scope by construction.** The agent is handed a kubeconfig for a freshly built, throwaway k3d lab cluster and nothing else. The target list is a file (namespaces, Services, node IPs) generated from that cluster. The harness refuses to start if the current context isn't a `k3d-*` lab cluster, and a `--i-understand` style guard plus a printed scope banner make "this is the lab, nothing else" explicit. This is the same authorization boundary a real engagement has — it's just enforced in code because the operator is an agent.
+- **A rules-of-engagement file** (`m10/engagement.yaml`): allowed target cluster, time box, techniques that are in scope, and a hard deny-list (no egress to anything off the lab subnet, no attempt to reach the host, no destructive payloads). The agent reads it as its brief; the harness enforces the network and target parts regardless of what the agent decides.
+- **Known techniques only.** The agent works from a catalog of recognised, published techniques drawn from the lab's own modules and framework mappings (MITRE ATT&CK Containers, the Kubenomicon matrix, Stratus Red Team's Kubernetes techniques). It chains and prioritises them; it is not there to author novel exploit code. Where a step would need a real exploit binary, it uses the lab's existing, pinned tooling (kubeletctl, Stratus Red Team, Kubernetes Goat scenarios) rather than writing one.
+- **Everything is logged.** Every command, request and result is written to a run transcript. Because the cluster has M1 audit logging and M6 Falco running, each agent action can be lined up against what the cluster saw.
+
+**What the agent does per run:**
+
+1. **Recon** from an assumed starting position you choose — the realistic one is "inside a pod with a default ServiceAccount" (the most common real-world foothold), with "unauthenticated from the pod network" as a second scenario. Enumerate reachable APIs, tokens, RBAC, Services, and node/kubelet surface.
+2. **Plan** a path against the ATT&CK Containers tactics (discovery → credential access → lateral movement → privilege escalation), citing the technique IDs it intends to use.
+3. **Act** within the engagement scope, recording each attempt and its outcome (blocked at admission, denied by RBAC, denied by NetworkPolicy, or succeeded).
+4. **Report** into a notebook: a timeline, an ATT&CK-style coverage grid, and for each attempted technique three columns — **attempted / prevented / detected** — with the audit-log entry or Falco alert that caught it (or a gap where nothing did).
+
+**Why this is the most valuable module for you specifically:** it closes the loop on the whole lab. M1–M9 add controls and detections; M10 is the independent check that they actually fire under pressure. A detection gap the agent finds (for example the `nodes/proxy` → exec path that produces no audit event) becomes the next thing to fix, and the next run proves the fix.
+
+**Implementation options, simplest first:**
+
+- **(a) Scripted scenario-runner.** The agent is given a fixed menu of lab techniques and a notebook that runs each, records prevented/detected, and scores it. Deterministic, safe, good for CI. This is the floor, and it's worth building even on its own.
+- **(b) Claude Code / Agent SDK harness.** A subagent is given the engagement file, the scoped kubeconfig, and a small read-mostly toolset (kubectl, the catalogued offensive tools), and is told to pursue the objective and produce the report. More realistic and open-ended; must run against the throwaway cluster only, with the network deny-list enforced by the lab's own egress NetworkPolicies and a scope-guard wrapper on every tool call.
+- **(c) Existing frameworks as the engine.** Drive **Stratus Red Team** (detonate-and-detect) and selected **Kubernetes Goat** scenarios from the same notebook, and let the agent choose and sequence them. Least custom code, strong provenance.
+
+A sensible build order is (a) → (c) → (b): prove the scoring loop with scripted techniques, wire in the established frameworks, then let the agent drive. Keep this module last on the roadmap because its scorecard is only meaningful once M6 detection and the M1–M4 controls exist to be tested.
 
 ### Suggested repo layout
 
@@ -188,8 +218,9 @@ docs/
 | **D. New surfaces** | M5 supply chain, then M7 nodes/components. | Covers the 2025–2026 incident classes. |
 | **E. AI workloads** | M8. | Covers the newest initial-access surface. |
 | **F. Capstone & docs** | M9 capstone, replace the workbook PDF, README for Linux and macOS, move design docs. | A coherent course. |
+| **G. Adversarial agent (purple team)** | M10. Start with the scripted scenario-runner and scorecard (option a), add Stratus Red Team / Kubernetes Goat (option c), then the Agent-SDK harness (option b) with the scope-guard and egress deny-list. | An authorized agent that independently tests whether the M1–M9 controls and detections actually fire, and reports the gaps. |
 
-Step A is self-contained and worth doing even if nothing else is adopted.
+Step A is self-contained and worth doing even if nothing else is adopted. Step G depends on C (detection) being in place, because its scorecard measures what the detections catch.
 
 ---
 
@@ -201,6 +232,7 @@ Step A is self-contained and worth doing even if nothing else is adopted.
 4. **Single cluster:** the Phase 4 rebuild exists only because encryption is enabled at creation. Creating one cluster with encryption and audit from the start (and keeping a "before" profile for comparison exercises) would simplify the flow.
 5. **User namespaces in k3d:** `hostUsers: false` needs idmapped-mount support from the host kernel and the containerd-in-Docker setup. This needs a short spike before M2 relies on it.
 6. **Scope of M8:** CPU-only toy model server and MCP server, or also optional GPU/cloud material?
+7. **M10 agent autonomy:** how far up the (a)→(c)→(b) ladder do you want to go — a deterministic scripted runner, framework-driven, or a free-driving Agent-SDK harness? And which starting position is the default: assumed pod foothold, or unauthenticated from the pod network?
 
 ---
 
